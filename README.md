@@ -70,7 +70,7 @@ The chatbot features:
 chatbot/
 ├── main.py           # FastAPI backend server
 ├── index.html        # Frontend UI
-├── secrets.env       # Environment variables (create this)
+├── .env       # Environment variables (create this)
 └── README.md         # This file
 ```
 
