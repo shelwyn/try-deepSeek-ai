@@ -43,7 +43,7 @@ The chatbot features:
    ```
 
 3. **Configure Environment Variables**
-   - Create a file named `secrets.env` in the project root
+   - Create a file named `.env` in the project root
    - Add your HuggingFace token:
    ```
    HF_TOKEN=your_huggingface_token_here
