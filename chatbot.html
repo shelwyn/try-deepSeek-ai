@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Chatbot</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f2f5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-container {
+            max-width: 800px;
+            margin: 20px auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            width: 95%;
+        }
+
+        .chat-header {
+            padding: 20px;
+            background: #075e54;
+            color: white;
+            border-radius: 10px 10px 0 0;
+        }
+
+        .chat-messages {
+            padding: 20px;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .message.user {
+            align-items: flex-end;
+        }
+
+        .message.bot {
+            align-items: flex-start;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 10px 15px;
+            border-radius: 15px;
+            margin-top: 5px;
+            white-space: pre-wrap;
+        }
+
+        .user .message-content {
+            background: #dcf8c6;
+        }
+
+        .bot .message-content {
+            background: #e8e8e8;
+        }
+
+        /* LLM Specific Styling */
+        .think-block {
+            background: #f5f5f5;
+            border-left: 3px solid #075e54;
+            padding: 10px;
+            margin: 10px 0;
+            font-style: italic;
+            color: #666;
+        }
+
+        .math-block {
+            background: #fff;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+
+        .step {
+            margin: 10px 0;
+            padding: 5px 0;
+        }
+
+        .final-answer {
+            font-weight: bold;
+            color: #075e54;
+            margin-top: 10px;
+        }
+
+        .boxed {
+            border: 2px solid #075e54;
+            padding: 2px 8px;
+            border-radius: 4px;
+            display: inline-block;
+            margin: 0 4px;
+        }
+
+        /* Typing indicator styles */
+        .typing {
+            display: none;
+            align-items: flex-start;
+            margin-bottom: 20px;
+        }
+
+        .typing .message-content {
+            background: #e8e8e8;
+            padding: 15px 20px;
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            background: #90949c;
+            border-radius: 50%;
+            margin: 0 3px;
+            animation: typing 1.5s infinite ease-in-out;
+        }
+
+        .dot:nth-child(2) { animation-delay: 0.5s; }
+        .dot:nth-child(3) { animation-delay: 1s; }
+
+        @keyframes typing {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+
+        .input-container {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e8e8e8;
+            border-radius: 0 0 10px 10px;
+            display: flex;
+        }
+
+        input[type="text"] {
+            flex-grow: 1;
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+            margin-right: 10px;
+            outline: none;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #075e54;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #064940;
+        }
+
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+
+        strong {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h2>Deepseek-AI Chatbot</h2>
+        </div>
+        <div class="chat-messages" id="chat-messages">
+            <div class="message bot">
+                <div class="message-content">
+                    Hello! How can I help you today?
+                </div>
+            </div>
+            <div class="typing" id="typing-indicator">
+                <div class="message-content">
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                </div>
+            </div>
+        </div>
+        <div class="input-container">
+            <input type="text" id="user-input" placeholder="Type your message..." />
+            <button onclick="sendMessage()" id="send-button">Send</button>
+        </div>
+    </div>
+
+    <script>
+        const chatMessages = document.getElementById('chat-messages');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+        const typingIndicator = document.getElementById('typing-indicator');
+
+        userInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        function formatLLMResponse(text) {
+            let formattedText = document.createElement('div');
+            
+            // Split the text into sections
+            let parts = text.split(/(<think>.*?<\/think>)/s);
+            
+            parts.forEach(part => {
+                if (part.startsWith('<think>')) {
+                    // Format thinking block
+                    let thinkContent = part.replace(/<\/?think>/g, '').trim();
+                    let thinkDiv = document.createElement('div');
+                    thinkDiv.className = 'think-block';
+                    thinkDiv.textContent = thinkContent;
+                    formattedText.appendChild(thinkDiv);
+                } else {
+                    // Format the rest of the content
+                    let content = part.trim();
+                    if (content) {
+                        // Replace markdown-style bold
+                        content = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                        
+                        // Format math expressions
+                        content = content.replace(/\\[(.*?)\\]/g, '<div class="math-block">$1</div>');
+                        
+                        // Format boxed answers
+                        content = content.replace(/\\boxed{(.*?)}/g, '<span class="boxed">$1</span>');
+                        
+                        // Create steps
+                        let steps = content.split('\n').map(step => {
+                            if (step.includes('Step')) {
+                                return `<div class="step">${step}</div>`;
+                            } else if (step.includes('Final Answer')) {
+                                return `<div class="final-answer">${step}</div>`;
+                            }
+                            return step;
+                        }).join('\n');
+                        
+                        let contentDiv = document.createElement('div');
+                        contentDiv.innerHTML = steps;
+                        formattedText.appendChild(contentDiv);
+                    }
+                }
+            });
+            
+            return formattedText.innerHTML;
+        }
+
+        async function sendMessage() {
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            // Disable input and button while processing
+            userInput.disabled = true;
+            sendButton.disabled = true;
+
+            // Add user message
+            addMessage(message, 'user');
+            userInput.value = '';
+
+            // Show typing indicator
+            typingIndicator.style.display = 'flex';
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            try {
+                const response = await fetch('http://localhost:8000/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: message })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+
+                const data = await response.json();
+                
+                // Hide typing indicator and add formatted bot response
+                typingIndicator.style.display = 'none';
+                addMessage(data.response, 'bot', true);
+
+            } catch (error) {
+                typingIndicator.style.display = 'none';
+                addMessage('Sorry, I encountered an error. Please try again.', 'bot');
+                console.error('Error:', error);
+            }
+
+            // Re-enable input and button
+            userInput.disabled = false;
+            sendButton.disabled = false;
+            userInput.focus();
+        }
+
+        function addMessage(text, sender, format = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            
+            if (format && sender === 'bot') {
+                contentDiv.innerHTML = formatLLMResponse(text);
+            } else {
+                contentDiv.textContent = text;
+            }
+            
+            messageDiv.appendChild(contentDiv);
+            chatMessages.insertBefore(messageDiv, typingIndicator);
+            
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+    </script>
+</body>
+</html>
