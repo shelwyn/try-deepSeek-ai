@@ -19,6 +19,12 @@
             flex-direction: column;
         }
 
+        @media (max-width: 768px) {
+            .chat-messages {
+                max-height: calc(100vh - 160px);
+            }
+        }
+
         .chat-container {
             max-width: 800px;
             margin: 20px auto;
@@ -29,6 +35,8 @@
             display: flex;
             flex-direction: column;
             width: 95%;
+            padding-bottom: env(safe-area-inset-bottom);
+
         }
 
         .chat-header {
@@ -42,7 +50,13 @@
             padding: 20px;
             overflow-y: auto;
             flex-grow: 1;
+            scroll-behavior: smooth;
+            /* Add smooth momentum scrolling for iOS */
+            -webkit-overflow-scrolling: touch;
+            /* Ensure proper height calculation */
+            max-height: calc(100vh - 180px);
         }
+
 
         .message {
             margin-bottom: 20px;
@@ -59,11 +73,16 @@
         }
 
         .message-content {
-            max-width: 70%;
-            padding: 10px 15px;
+            max-width: 80%;
+            padding: 12px 16px;
             border-radius: 15px;
             margin-top: 5px;
             white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .message + .message {
+            margin-top: 16px;
         }
 
         .user .message-content {
@@ -76,12 +95,20 @@
 
         /* LLM Specific Styling */
         .think-block {
-            background: #f5f5f5;
+            background: #f8f9fa;
             border-left: 3px solid #075e54;
-            padding: 10px;
-            margin: 10px 0;
+            padding: 12px;
+            margin: 8px 0;
             font-style: italic;
             color: #666;
+            font-size: 0.95em;
+            border-radius: 4px;
+        }
+
+        .response-content {
+            margin-top: 12px;
+            line-height: 1.5;
+            white-space: pre-wrap;
         }
 
         .math-block {
@@ -223,50 +250,47 @@
         });
 
         function formatLLMResponse(text) {
-            let formattedText = document.createElement('div');
-            
-            // Split the text into sections
-            let parts = text.split(/(<think>.*?<\/think>)/s);
-            
-            parts.forEach(part => {
-                if (part.startsWith('<think>')) {
-                    // Format thinking block
-                    let thinkContent = part.replace(/<\/?think>/g, '').trim();
-                    let thinkDiv = document.createElement('div');
+            try {
+                // Create a container for the formatted content
+                const formattedText = document.createElement('div');
+                
+                // Split the text into parts (thinking and response)
+                const thinkMatch = text.match(/<think>([\s\S]*?)<\/think>/);
+                const mainContent = text.replace(/<think>[\s\S]*?<\/think>/, '').trim();
+                
+                // If there's a thinking block, add it
+                if (thinkMatch) {
+                    const thinkContent = thinkMatch[1].trim();
+                    const thinkDiv = document.createElement('div');
                     thinkDiv.className = 'think-block';
                     thinkDiv.textContent = thinkContent;
                     formattedText.appendChild(thinkDiv);
-                } else {
-                    // Format the rest of the content
-                    let content = part.trim();
-                    if (content) {
-                        // Replace markdown-style bold
-                        content = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-                        
-                        // Format math expressions
-                        content = content.replace(/\\[(.*?)\\]/g, '<div class="math-block">$1</div>');
-                        
-                        // Format boxed answers
-                        content = content.replace(/\\boxed{(.*?)}/g, '<span class="boxed">$1</span>');
-                        
-                        // Create steps
-                        let steps = content.split('\n').map(step => {
-                            if (step.includes('Step')) {
-                                return `<div class="step">${step}</div>`;
-                            } else if (step.includes('Final Answer')) {
-                                return `<div class="final-answer">${step}</div>`;
-                            }
-                            return step;
-                        }).join('\n');
-                        
-                        let contentDiv = document.createElement('div');
-                        contentDiv.innerHTML = steps;
-                        formattedText.appendChild(contentDiv);
-                    }
                 }
-            });
-            
-            return formattedText.innerHTML;
+                
+                // Add the main response content
+                if (mainContent) {
+                    const contentDiv = document.createElement('div');
+                    contentDiv.className = 'response-content';
+                    
+                    // Format the content with markdown and other styling
+                    let formattedContent = mainContent
+                        // Bold text
+                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                        // Italics
+                        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                        // Line breaks
+                        .replace(/\n/g, '<br>');
+                    
+                    contentDiv.innerHTML = formattedContent;
+                    formattedText.appendChild(contentDiv);
+                }
+                
+                return formattedText.innerHTML;
+            } catch (error) {
+                console.error('Error formatting response:', error);
+                // If there's an error in formatting, return the original text
+                return text;
+            }
         }
 
         async function sendMessage() {
@@ -281,9 +305,9 @@
             addMessage(message, 'user');
             userInput.value = '';
 
-            // Show typing indicator
+            // Show typing indicator and scroll
             typingIndicator.style.display = 'flex';
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+            scrollToBottom();
 
             try {
                 const response = await fetch('http://localhost:8000/chat', {
@@ -323,16 +347,28 @@
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
             
-            if (format && sender === 'bot') {
-                contentDiv.innerHTML = formatLLMResponse(text);
-            } else {
+            try {
+                if (format && sender === 'bot') {
+                    contentDiv.innerHTML = formatLLMResponse(text);
+                } else {
+                    contentDiv.textContent = text;
+                }
+            } catch (error) {
+                console.error('Error in addMessage:', error);
                 contentDiv.textContent = text;
             }
             
             messageDiv.appendChild(contentDiv);
             chatMessages.insertBefore(messageDiv, typingIndicator);
-            
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+            scrollToBottom();
+        }
+
+        function scrollToBottom() {
+            const chatMessages = document.getElementById('chat-messages');
+            chatMessages.scrollTo({
+                top: chatMessages.scrollHeight,
+                behavior: 'smooth'
+            });
         }
     </script>
 </body>
